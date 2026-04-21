@@ -1,12 +1,13 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
-import 'package:medication/screens/medication_screen_with_dose_dialog.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class NotificationService {
+    static String? initialNotificationPayload;
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
@@ -29,33 +30,31 @@ class NotificationService {
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (details) async {
         if (details.payload != null) {
-          final payload = details.payload!;
-          final parts = payload.split(':');
-          if (parts.length >= 3) {
-            final medId = int.tryParse(parts[0]);
-            final medName = parts.sublist(2).join(':');
-            if (medId != null) {
-              navigatorKey.currentState?.pushNamed(
-                '/mark-dose',
-                arguments: {
-                  'medicationId': medId,
-                  'medicationName': medName,
-                },
-              );
-            }
-          }
+          initialNotificationPayload = details.payload;
         }
       },
+      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
 
     // Request notification permissions (iOS and Android 13+)
-    // Android 13+ notification permission
-    await flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
-    await flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()?.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+  }
+
+  // For background/terminated state
+  @pragma('vm:entry-point')
+  static void notificationTapBackground(NotificationResponse details) {
+    if (details.payload != null) {
+      initialNotificationPayload = details.payload;
+    }
   }
 
   Future<void> scheduleNotification({
