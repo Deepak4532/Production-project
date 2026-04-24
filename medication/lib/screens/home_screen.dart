@@ -31,45 +31,64 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight;
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Smart Medication Reminder'),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Colors.white,
-        elevation: 2,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
-      body: _screens[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Theme.of(context).colorScheme.primary,
-        unselectedItemColor: Colors.grey,
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Theme.of(context).colorScheme.primary.withOpacity(0.10), Colors.white],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.medication),
-            label: 'Medications',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.alarm),
-            label: 'Reminders',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.camera_alt),
-            label: 'Pill Recog.',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        showUnselectedLabels: true,
-        backgroundColor: Colors.white,
-        elevation: 8,
+        ),
+        child: Padding(
+          padding: EdgeInsets.only(top: topPadding, bottom: 8),
+          child: _screens[_selectedIndex],
+        ),
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2))],
+        ),
+        child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: Theme.of(context).colorScheme.primary,
+          unselectedItemColor: Colors.grey,
+          items: const <BottomNavigationBarItem>[
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.medication),
+              label: 'Medications',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.alarm),
+              label: 'Reminders',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.camera_alt),
+              label: 'Pill Recog.',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person),
+              label: 'Profile',
+            ),
+          ],
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          showUnselectedLabels: true,
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
       ),
     );
   }

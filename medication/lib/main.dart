@@ -3,9 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-
-
-
 import 'package:flutter/material.dart';
 import 'package:medication/screens/splash_screen.dart';
 import 'package:medication/screens/login_screen.dart';
@@ -38,6 +35,38 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF8F7FC),
+        appBarTheme: const AppBarTheme(centerTitle: true),
+        cardTheme: CardThemeData(
+          elevation: 6,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFD7D3E6)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Colors.deepPurple, width: 1.3),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          ),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
       ),
       initialRoute: '/',
       routes: {
@@ -70,16 +99,45 @@ class _RootScreenState extends State<_RootScreen> {
   @override
   void initState() {
     super.initState();
-    _checkSession();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _checkSession();
+      // After session navigation, check for notification payload and navigate if needed
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final payload = NotificationService.initialNotificationPayload;
+        if (payload != null) {
+          debugPrint('[RootScreen] Cold start notification payload: $payload');
+          final parts = payload.split(':');
+          if (parts.length >= 3) {
+            final medId = int.tryParse(parts[0]);
+            final medName = parts.sublist(2).join(':');
+            if (medId != null) {
+              navigatorKey.currentState?.popUntil((route) => route.isFirst);
+              navigatorKey.currentState?.pushNamed(
+                '/mark-dose',
+                arguments: {
+                  'medicationId': medId,
+                  'medicationName': medName,
+                },
+              );
+              NotificationService.initialNotificationPayload = null;
+            } else {
+              debugPrint('[RootScreen] Invalid medId in payload: $payload');
+            }
+          } else {
+            debugPrint('[RootScreen] Invalid payload format: $payload');
+          }
+        }
+      });
+    });
   }
 
   Future<void> _checkSession() async {
     final email = await SessionManager.getUserSession();
     if (mounted) {
       if (email != null) {
-        Navigator.of(context).pushReplacementNamed('/home');
+        await navigatorKey.currentState?.pushReplacementNamed('/home');
       } else {
-        Navigator.of(context).pushReplacementNamed('/login');
+        await navigatorKey.currentState?.pushReplacementNamed('/login');
       }
     }
   }
