@@ -7,12 +7,19 @@ import 'package:timezone/timezone.dart' as tz;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class NotificationService {
-    static String? initialNotificationPayload;
+  static String? initialNotificationPayload;
+  // Notifies listeners when a notification payload should be handled
+  static final ValueNotifier<String?> notificationTapNotifier = ValueNotifier<String?>(null);
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+  static void _handleNotificationTap(String payload) {
+    // Notification tapped with payload: $payload
+    notificationTapNotifier.value = payload;
+  }
 
   Future<void> init() async {
     // Initialize timezone database
@@ -31,10 +38,13 @@ class NotificationService {
       onDidReceiveNotificationResponse: (details) async {
         if (details.payload != null) {
           initialNotificationPayload = details.payload;
+          // Runtime navigation: parse payload and navigate
+          NotificationService._handleNotificationTap(details.payload!);
         }
       },
       onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
+
 
     // Request notification permissions (iOS and Android 13+)
     await flutterLocalNotificationsPlugin

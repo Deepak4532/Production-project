@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:medication/services/database_helper.dart';
 import 'package:medication/services/notification_service.dart';
-import 'package:medication/screens/medication_screen_with_dose_dialog.dart';
 
 class ReminderScreen extends StatefulWidget {
   final int? medicationId; // Optional: filter reminders for a medication
@@ -40,37 +39,74 @@ class _ReminderScreenState extends State<ReminderScreen> {
     });
   }
 
+  TimeOfDay? _pickedTime;
+
   void _showAddReminderDialog() async {
-    TimeOfDay? picked = await showTimePicker(
+    setState(() { _pickedTime = null; });
+    await showDialog(
       context: context,
-      initialTime: TimeOfDay.now(),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Add Reminder'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                icon: const Icon(Icons.access_time),
+                label: Text(_pickedTime == null ? 'Pick Time' : _pickedTime!.format(context)),
+                onPressed: () async {
+                  final t = await showTimePicker(
+                    context: ctx,
+                    initialTime: TimeOfDay.now(),
+                  );
+                  if (t != null) setDialogState(() { _pickedTime = t; });
+                },
+                style: ElevatedButton.styleFrom(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 18),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: _pickedTime == null
+                  ? null
+                  : () async {
+                      final db = DatabaseHelper();
+                      final medId = widget.medicationId ?? 1;
+                      final meds = await db.db.then((dbClient) => dbClient.query('medications', where: 'id = ?', whereArgs: [medId]));
+                      final medName = meds.isNotEmpty ? meds.first['name'] ?? '' : '';
+                      final reminderId = await db.addReminderForMedication(
+                        medId,
+                        _pickedTime!.format(context),
+                        true,
+                      );
+                      final now = DateTime.now();
+                      var scheduled = DateTime(now.year, now.month, now.day, _pickedTime!.hour, _pickedTime!.minute);
+                      if (scheduled.isBefore(now)) {
+                        scheduled = scheduled.add(const Duration(days: 1));
+                      }
+                      await NotificationService().scheduleNotification(
+                        id: reminderId,
+                        title: 'Time to take your medicine',
+                        body: 'It\'s time to take $medName',
+                        scheduledTime: scheduled,
+                        payload: '$medId:$reminderId:$medName',
+                      );
+                      Navigator.of(ctx).pop();
+                      _loadReminders();
+                    },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
     );
-    if (picked != null) {
-      final db = DatabaseHelper();
-      final medId = widget.medicationId ?? 1;
-      // Get medication name
-      final meds = await db.db.then((dbClient) => dbClient.query('medications', where: 'id = ?', whereArgs: [medId]));
-      final medName = meds.isNotEmpty ? meds.first['name'] ?? '' : '';
-      final reminderId = await db.addReminderForMedication(
-        medId,
-        picked.format(context),
-        true,
-      );
-      // Schedule notification
-      final now = DateTime.now();
-      var scheduled = DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
-      if (scheduled.isBefore(now)) {
-        scheduled = scheduled.add(const Duration(days: 1));
-      }
-      await NotificationService().scheduleNotification(
-        id: reminderId,
-        title: 'Time to take your medicine',
-        body: 'It\'s time to take $medName',
-        scheduledTime: scheduled,
-        payload: '$medId:$reminderId:$medName',
-      );
-      _loadReminders();
-    }
   }
 
   void _deleteReminder(int id) async {
@@ -82,28 +118,66 @@ class _ReminderScreenState extends State<ReminderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight;
     return Scaffold(
-      appBar: AppBar(title: const Text('Reminders')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: _reminders.length,
-              itemBuilder: (context, i) {
-                final reminder = _reminders[i];
-                return ListTile(
-                  leading: const Icon(Icons.alarm),
-                  title: Text(reminder['time'] ?? ''),
-                  subtitle: Text('Enabled: ${reminder['enabled'] == 1 ? 'Yes' : 'No'}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () => _deleteReminder(reminder['id']),
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Reminders'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Theme.of(context).colorScheme.primary.withOpacity(0.12), Colors.white],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _reminders.isEmpty
+                ? Center(
+                    child: Text(
+                      'No reminders yet',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey[600]),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: EdgeInsets.only(top: topPadding, left: 16, right: 16, bottom: 16),
+                    itemCount: _reminders.length,
+                    itemBuilder: (context, i) {
+                      final reminder = _reminders[i];
+                      return Card(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 3,
+                        margin: const EdgeInsets.symmetric(vertical: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                            child: const Icon(Icons.alarm, color: Colors.deepPurple),
+                          ),
+                          title: Text(
+                            reminder['time'] ?? '',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text('Enabled: ${reminder['enabled'] == 1 ? 'Yes' : 'No'}'),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => _deleteReminder(reminder['id']),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
-      floatingActionButton: FloatingActionButton(
+      ),
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddReminderDialog,
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('Add Reminder'),
+        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
     );
   }
