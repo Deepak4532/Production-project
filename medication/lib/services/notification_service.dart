@@ -34,10 +34,9 @@ class NotificationService {
       iOS: initializationSettingsIOS,
     );
     await flutterLocalNotificationsPlugin.initialize(
-      settings: initializationSettings,
+      initializationSettings,
       onDidReceiveNotificationResponse: (details) async {
         if (details.payload != null) {
-          initialNotificationPayload = details.payload;
           // Runtime navigation: parse payload and navigate
           NotificationService._handleNotificationTap(details.payload!);
         }
@@ -45,6 +44,12 @@ class NotificationService {
       onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
 
+    // Handle initial notification if app was terminated
+    final NotificationAppLaunchDetails? notificationAppLaunchDetails =
+        await flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();
+    if (notificationAppLaunchDetails?.didNotificationLaunchApp ?? false) {
+      initialNotificationPayload = notificationAppLaunchDetails?.notificationResponse?.payload;
+    }
 
     // Request notification permissions (iOS and Android 13+)
     await flutterLocalNotificationsPlugin
@@ -75,11 +80,11 @@ class NotificationService {
     String? payload,
   }) async {
     await flutterLocalNotificationsPlugin.zonedSchedule(
-      id: id,
-      title: title,
-      body: body,
-      scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
-      notificationDetails: const NotificationDetails(
+      id,
+      title,
+      body,
+      tz.TZDateTime.from(scheduledTime, tz.local),
+      const NotificationDetails(
         android: AndroidNotificationDetails(
           'medication_channel',
           'Medication Reminders',
@@ -89,6 +94,8 @@ class NotificationService {
         ),
         iOS: DarwinNotificationDetails(),
       ),
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       payload: payload,
       matchDateTimeComponents: DateTimeComponents.time,
@@ -96,7 +103,7 @@ class NotificationService {
   }
 
   Future<void> cancelNotification(int id) async {
-    await flutterLocalNotificationsPlugin.cancel(id: id);
+    await flutterLocalNotificationsPlugin.cancel(id);
   }
 }
 

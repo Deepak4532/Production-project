@@ -1,7 +1,9 @@
-import 'package:medication/screens/medication_screen_with_dose_dialog.dart';
+// import 'package:medication/screens/medication_screen_with_dose_dialog.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'package:medication/services/database_helper.dart';
 
 import 'package:flutter/material.dart';
 import 'package:medication/screens/splash_screen.dart';
@@ -11,7 +13,6 @@ import 'package:medication/screens/profile_screen.dart';
 import 'package:medication/screens/register_screen.dart';
 import 'services/session_manager.dart';
 import 'package:medication/services/notification_service.dart';
-import 'package:medication/services/notification_service.dart' show navigatorKey;
 
 
 void main() async {
@@ -24,8 +25,121 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    NotificationService.notificationTapNotifier.addListener(_handleNotificationTap);
+
+    // Check for initial notification after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _handleNotificationTap(forceCheckInitial: true);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    NotificationService.notificationTapNotifier.removeListener(_handleNotificationTap);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _handleNotificationTap(forceCheckInitial: true);
+      });
+    }
+  }
+
+  Future<void> _showMedicationDialog(int medId, String medName) async {
+    final navigator = navigatorKey.currentState;
+    if (navigator == null || !navigator.mounted) return;
+
+    final context = navigator.overlay!.context;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Mark Dose for $medName'),
+        content: const Text('Did you take your medication?'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final db = await DatabaseHelper().db;
+              await db.insert('dose_history', {
+                'medication_id': medId,
+                'taken': 1,
+                'timestamp': DateTime.now().toIso8601String(),
+              });
+              if (mounted) Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Taken'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final db = await DatabaseHelper().db;
+              await db.insert('dose_history', {
+                'medication_id': medId,
+                'taken': 0,
+                'timestamp': DateTime.now().toIso8601String(),
+              });
+              if (mounted) Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Not Taken'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleNotificationTap({bool forceCheckInitial = false}) async {
+    String? payload = NotificationService.notificationTapNotifier.value;
+    if (payload == null && forceCheckInitial) {
+      payload = NotificationService.initialNotificationPayload;
+    }
+
+    if (payload == null) return;
+
+    final parts = payload.split(':');
+    if (parts.length < 3) return;
+
+    final medId = int.tryParse(parts[0]);
+    final medName = parts.sublist(2).join(':');
+
+    if (medId == null) return;
+
+    // Ensure navigator is ready
+    if (navigatorKey.currentState == null || !navigatorKey.currentState!.mounted) {
+      // Retry after a short delay
+      await Future.delayed(const Duration(milliseconds: 500));
+      _handleNotificationTap(forceCheckInitial: true);
+      return;
+    }
+
+    // Pop to home screen
+    navigatorKey.currentState?.popUntil((route) => route.isFirst);
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    // Show dialog
+    await _showMedicationDialog(medId, medName);
+
+    // Clear payload
+    NotificationService.notificationTapNotifier.value = null;
+    NotificationService.initialNotificationPayload = null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,13 +190,7 @@ class MyApp extends StatelessWidget {
         '/register': (context) => const RegisterScreen(),
         '/home': (context) => const HomeScreen(),
         '/profile': (context) => const ProfileScreen(),
-        '/mark-dose': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
-          return MedicationScreenWithDoseDialog(
-            medicationId: args['medicationId'],
-            medicationName: args['medicationName'],
-          );
-        },
+        // Removed /mark-dose route
       },
     );
   }
@@ -101,33 +209,7 @@ class _RootScreenState extends State<_RootScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _checkSession();
-      // After session navigation, check for notification payload and navigate if needed
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final payload = NotificationService.initialNotificationPayload;
-        if (payload != null) {
-          debugPrint('[RootScreen] Cold start notification payload: $payload');
-          final parts = payload.split(':');
-          if (parts.length >= 3) {
-            final medId = int.tryParse(parts[0]);
-            final medName = parts.sublist(2).join(':');
-            if (medId != null) {
-              navigatorKey.currentState?.popUntil((route) => route.isFirst);
-              navigatorKey.currentState?.pushNamed(
-                '/mark-dose',
-                arguments: {
-                  'medicationId': medId,
-                  'medicationName': medName,
-                },
-              );
-              NotificationService.initialNotificationPayload = null;
-            } else {
-              debugPrint('[RootScreen] Invalid medId in payload: $payload');
-            }
-          } else {
-            debugPrint('[RootScreen] Invalid payload format: $payload');
-          }
-        }
-      });
+      // Notification dialog is now handled globally in MyApp
     });
   }
 

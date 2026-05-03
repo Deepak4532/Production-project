@@ -4,6 +4,7 @@ import 'package:medication/screens/profile_screen.dart';
 import 'package:medication/services/database_helper.dart';
 import 'package:medication/screens/reminder_screen.dart';
 import 'package:medication/screens/medication_screen.dart';
+import 'package:medication/screens/pill_recognition_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,7 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const _HomeDashboard(),
         const MedicationScreen(),
         const MedicationRemindersTab(),
-        const Center(child: Text('Pill Recognition')), // Placeholder for pill recognition
+        const PillRecognitionScreen(),
         ProfileScreen(),
       ];
 
@@ -168,7 +169,7 @@ class _HomeDashboardState extends State<_HomeDashboard> {
               children: [
                 Text(
                   "Today's Medications",
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, fontSize: 18),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -242,7 +243,7 @@ class _HomeDashboardState extends State<_HomeDashboard> {
                         final homeState = context.findAncestorStateOfType<_HomeScreenState>();
                         if (homeState != null) {
                           homeState.setState(() {
-                            homeState._selectedIndex = 2;
+                            homeState._selectedIndex = 3;
                           });
                         }
                       },
