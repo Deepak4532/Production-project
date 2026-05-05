@@ -3,12 +3,14 @@ import 'package:path/path.dart';
 import 'dart:async';
 
 class DatabaseHelper {
-    Future<int> addMedication(String name, String dosage, String notes) async {
+    Future<int> addMedication(String name, String dosage, String notes, {int durationDays = 0, String? startDate}) async {
       final dbClient = await db;
       return await dbClient.insert('medications', {
         'name': name,
         'dosage': dosage,
         'notes': notes,
+        'start_date': startDate ?? DateTime.now().toIso8601String(),
+        'duration_days': durationDays,
       });
     }
 
@@ -19,6 +21,26 @@ class DatabaseHelper {
         'time': time,
         'enabled': enabled ? 1 : 0,
       });
+    }
+
+    Future<int> updateMedication(int id, String name, String dosage, String notes, {int durationDays = 0}) async {
+      final dbClient = await db;
+      return await dbClient.update(
+        'medications',
+        {
+          'name': name,
+          'dosage': dosage,
+          'notes': notes,
+          'duration_days': durationDays,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+
+    Future<int> deleteMedication(int id) async {
+      final dbClient = await db;
+      return await dbClient.delete('medications', where: 'id = ?', whereArgs: [id]);
     }
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   factory DatabaseHelper() => _instance;
@@ -45,6 +67,11 @@ class DatabaseHelper {
         )
       ''');
     }
+    if (oldVersion < 3) {
+      // Add duration fields to medications table
+      await db.execute('ALTER TABLE medications ADD COLUMN start_date TEXT');
+      await db.execute('ALTER TABLE medications ADD COLUMN duration_days INTEGER DEFAULT 0');
+    }
   }
 
   Future<Database> _initDb() async {
@@ -52,7 +79,7 @@ class DatabaseHelper {
     final path = join(dbPath, 'app.db');
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -81,7 +108,9 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         dosage TEXT,
-        notes TEXT
+        notes TEXT,
+        start_date TEXT,
+        duration_days INTEGER DEFAULT 0
       )
     ''');
     await db.execute('''
@@ -154,5 +183,14 @@ class DatabaseHelper {
       return res.first;
     }
     return null;
+  }
+
+  Future<int> createUser({required String email, required String password, required String name}) async {
+    final dbClient = await db;
+    return await dbClient.insert('users', {
+      'username': name,
+      'email': email,
+      'password': password,
+    });
   }
 }

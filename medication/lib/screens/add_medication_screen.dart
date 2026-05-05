@@ -4,7 +4,7 @@ import 'package:medication/services/database_helper.dart';
 
 class AddMedicationScreen extends StatefulWidget {
   final VoidCallback? onSaved;
-  const AddMedicationScreen({Key? key, this.onSaved}) : super(key: key);
+  const AddMedicationScreen({super.key, this.onSaved});
 
   @override
   State<AddMedicationScreen> createState() => _AddMedicationScreenState();
@@ -15,6 +15,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   String _name = '';
   String _dosage = '';
   String _notes = '';
+  int _durationDays = 0;
   TimeOfDay? _reminderTime;
   bool _reminderEnabled = true;
   bool _saving = false;
@@ -24,7 +25,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     setState(() => _saving = true);
     _formKey.currentState!.save();
     final db = DatabaseHelper();
-    final medId = await db.addMedication(_name, _dosage, _notes);
+    final medId = await db.addMedication(_name, _dosage, _notes, durationDays: _durationDays);
     final reminderId = await db.addReminderForMedication(medId, _reminderTime!.format(context), _reminderEnabled);
     if (_reminderEnabled) {
       final now = DateTime.now();
@@ -99,7 +100,16 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                         ),
                         onSaved: (v) => _notes = v ?? '',
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Duration (days)',
+                          hintText: 'e.g., 5',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onSaved: (v) => _durationDays = int.tryParse(v ?? '0') ?? 0,
+                      ),
                       SwitchListTile(
                         title: const Text('Enable Reminder'),
                         value: _reminderEnabled,

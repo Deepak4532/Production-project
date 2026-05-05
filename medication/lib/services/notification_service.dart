@@ -1,75 +1,76 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter_timezone/flutter_timezone.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+// Global callback — set this once from main and never reset
+typedef PayloadCallback = void Function(String payload);
+PayloadCallback? onNotificationTapped;
 
 class NotificationService {
-  static String? initialNotificationPayload;
-  // Notifies listeners when a notification payload should be handled
-  static final ValueNotifier<String?> notificationTapNotifier = ValueNotifier<String?>(null);
+  static String? pendingPayload;
+
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-
-  static void _handleNotificationTap(String payload) {
-    // Notification tapped with payload: $payload
-    notificationTapNotifier.value = payload;
-  }
+  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
 
   Future<void> init() async {
-    // Initialize timezone database
-    tzdata.initializeTimeZones();
-    tz.setLocalLocation(tz.getLocation('Asia/Kathmandu'));
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    final DarwinInitializationSettings initializationSettingsIOS =
-        DarwinInitializationSettings();
-    final InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsIOS,
-    );
-    await flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: (details) async {
-        if (details.payload != null) {
-          // Runtime navigation: parse payload and navigate
-          NotificationService._handleNotificationTap(details.payload!);
-        }
-      },
-      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
-    );
+    try {
+      tz.initializeTimeZones();
+      try {
+        final timeZoneName = await FlutterTimezone.getLocalTimezone();
+        tz.setLocalLocation(tz.getLocation(timeZoneName));
+      } catch (_) {
+        tz.setLocalLocation(tz.local);
+      }
 
-    // Handle initial notification if app was terminated
-    final NotificationAppLaunchDetails? notificationAppLaunchDetails =
-        await flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();
-    if (notificationAppLaunchDetails?.didNotificationLaunchApp ?? false) {
-      initialNotificationPayload = notificationAppLaunchDetails?.notificationResponse?.payload;
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const iosSettings = DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
+      );
+
+      await _plugin.initialize(
+        const InitializationSettings(android: androidSettings, iOS: iosSettings),
+        onDidReceiveNotificationResponse: _onNotificationResponse,
+        onDidReceiveBackgroundNotificationResponse: _onBackgroundNotification,
+      );
+
+      // Check if app was cold-launched via notification tap
+      final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+      if (launchDetails?.didNotificationLaunchApp == true) {
+        pendingPayload = launchDetails?.notificationResponse?.payload;
+        debugPrint('[NOTIF] Cold-launch payload stored: $pendingPayload');
+      }
+    } catch (e) {
+      debugPrint('[NOTIF] Init error: $e');
     }
-
-    // Request notification permissions (iOS and Android 13+)
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
   }
 
-  // For background/terminated state
-  @pragma('vm:entry-point')
-  static void notificationTapBackground(NotificationResponse details) {
-    if (details.payload != null) {
-      initialNotificationPayload = details.payload;
+  static void _onNotificationResponse(NotificationResponse response) {
+    final payload = response.payload;
+    debugPrint('[NOTIF] Tapped (foreground/background): $payload');
+    if (payload == null) return;
+
+    if (onNotificationTapped != null) {
+      onNotificationTapped!(payload);
+    } else {
+      // Store for later pickup
+      pendingPayload = payload;
     }
+  }
+
+  @pragma('vm:entry-point')
+  static void _onBackgroundNotification(NotificationResponse response) {
+    pendingPayload = response.payload;
+    debugPrint('[NOTIF] Background tap stored: ${response.payload}');
   }
 
   Future<void> scheduleNotification({
@@ -79,7 +80,7 @@ class NotificationService {
     required DateTime scheduledTime,
     String? payload,
   }) async {
-    await flutterLocalNotificationsPlugin.zonedSchedule(
+    await _plugin.zonedSchedule(
       id,
       title,
       body,
@@ -88,32 +89,36 @@ class NotificationService {
         android: AndroidNotificationDetails(
           'medication_channel',
           'Medication Reminders',
-          channelDescription: 'Reminders for taking medication',
           importance: Importance.max,
           priority: Priority.high,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       ),
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       payload: payload,
-      matchDateTimeComponents: DateTimeComponents.time,
     );
+    debugPrint('[NOTIF] Scheduled id=$id at $scheduledTime payload=$payload');
   }
 
   Future<void> cancelNotification(int id) async {
-    await flutterLocalNotificationsPlugin.cancel(id);
+    await _plugin.cancel(id);
   }
-}
 
-/// Handles notification taps globally
-class NotificationTapHandler {
-  static void Function(String payload)? onTap;
-
-  static void handle(String payload) {
-    if (onTap != null) {
-      onTap!(payload);
-    }
+  Future<void> testNotification() async {
+    final scheduledTime = DateTime.now().add(const Duration(seconds: 5));
+    await scheduleNotification(
+      id: 9999,
+      title: 'Medication Reminder',
+      body: 'Tap here to mark your dose.',
+      scheduledTime: scheduledTime,
+      payload: '1:9999:Test Medication',
+    );
+    debugPrint('[NOTIF] Test notification scheduled for $scheduledTime');
   }
 }
