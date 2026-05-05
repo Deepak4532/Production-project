@@ -1,30 +1,35 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:medication/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:medication/screens/splash_screen.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('SplashScreen renders branding correctly', (WidgetTester tester) async {
+    // 1. Setup mock preferences
+    SharedPreferences.setMockInitialValues({});
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // 2. Build our app and trigger a frame
+    await tester.pumpWidget(
+      MaterialApp(
+        home: const SplashScreen(),
+        routes: {
+          '/login': (context) => const Scaffold(body: Text('Login Screen')),
+          '/home': (context) => const Scaffold(body: Text('Home Screen')),
+        },
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // 3. Verify that the branding text is on the screen
+    expect(find.text('Medication Pro'), findsOneWidget);
+    expect(find.text('Your health, prioritized.'), findsOneWidget);
+    
+    // Verify the loading indicator is present
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // 4. Let the animation and timer finish (2 seconds)
+    await tester.pumpAndSettle(const Duration(seconds: 3));
+
+    // 5. Verify it navigated to the Login Screen (since mock preferences are empty)
+    expect(find.text('Login Screen'), findsOneWidget);
   });
 }
